@@ -1,0 +1,11 @@
+# GitHub Copilot Configuration
+
+# Apply global instructions to all file types and contexts
+instructions:
+  global: instructions.md
+  
+# File-type specific configurations if needed in the future
+# languages:
+#   python: python_instructions.md
+#   javascript: js_instructions.md
+#   batch: batch_instructions.md

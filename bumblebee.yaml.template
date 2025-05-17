@@ -1,0 +1,38 @@
+# Bumblebee Configuration
+
+# OneDrive Monitoring Settings
+onedrive:
+  # Path to monitor within OneDrive (REQUIRED)
+  # This should be the full path to the OneDrive folder you want to monitor
+  monitor_path: "C:/Users/Yexin Chen/OneDrive/Instructions/Uncategorized"
+  
+  # Path where processed files will be moved (REQUIRED)
+  # If not specified, a "processed" folder will be created inside the monitor_path
+  processed_path: "C:/Users/Yexin Chen/OneDrive/Instructions/Uncategorized/processed"
+  
+  # Results Storage (Future implementation)
+  results:
+  # Path to store results
+  output_path: "C:/Users/Yexin Chen/OneDrive/Instructions/Uncategorized/results"
+
+  # How often to check for new files (in seconds)
+  # Default: 60 seconds if not specified
+  check_interval: 60
+
+# Audio Transcription Settings (Future implementation)
+transcription:
+  # Service to use for transcription (e.g., "azure", "google")
+  service: "azure"
+  # Language code for transcription
+  language: "en-US"
+
+# Task Processing Settings (Future implementation)
+tasks:
+  # Define tasks that can be triggered based on keywords or phrases
+  - name: "stock_research"
+    keywords: ["stock", "research", "company"]
+    action: "research_stock"
+    
+  - name: "book_summary"
+    keywords: ["book", "summarize", "summary"]
+    action: "summarize_book"
