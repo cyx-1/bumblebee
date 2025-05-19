@@ -4,6 +4,7 @@ import smtplib
 from email.message import EmailMessage
 from datetime import datetime
 from openai import OpenAI
+from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
 
 
 def send_email_notification(message: str, sender_email: str, sender_password: str, recipient_email: str = 'yexinchen@gmail.com') -> bool:
@@ -38,29 +39,34 @@ def send_email_notification(message: str, sender_email: str, sender_password: st
         return False
 
 
-def process_content(content: str, sender_email: str, sender_password: str, recipient_email: str) -> bool:
+def get_youtube_transcript(video_url: str) -> Tuple[bool, str]:
     """
-    Process content from a file and send it via email.
+    Fetches the transcript for a given YouTube video URL.
 
     Args:
-        content (str): The content to process
-        file_info (dict): Dictionary containing file information (name, type, etc.)
-        sender_email (str): Gmail address to send from
-        sender_password (str): Gmail app password
-        recipient_email (str, optional): Recipient's email address
-    """
-    # Format the message with file info and content
-    message = f"""
-New file processed by Bumblebee:
+        video_url (str): The URL of the YouTube video.
 
-Request:
------------------
-{content}
------------------
-Response:
-"""
-    # Send the notification
-    return send_email_notification(message, sender_email, sender_password, recipient_email)
+    Returns:
+        Tuple[bool, str]: A tuple containing a success flag and the transcript string or an error message.
+    """
+    try:
+        video_id = ''
+        if "v=" in video_url:
+            video_id = video_url.split("v=")[1].split("&")[0]
+        elif "youtu.be/" in video_url:
+            video_id = video_url.split("youtu.be/")[1].split("?")[0]
+        else:
+            return False, "Invalid YouTube URL format."
+
+        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+        transcript_text = " ".join([item['text'] for item in transcript_list])
+        return True, transcript_text
+    except NoTranscriptFound:
+        return False, f"No transcript found for video ID: {video_id}."
+    except TranscriptsDisabled:
+        return False, f"Transcripts are disabled for video ID: {video_id}."
+    except Exception as e:
+        return False, f"Failed to retrieve transcript: {str(e)}"
 
 
 def get_ai_response(query: str, api_key: str, model: str = "grok-3-beta") -> Tuple[bool, str]:
@@ -114,22 +120,23 @@ def process_query_and_send_email(query: str, openai_key: str, sender_email: str,
     """
     success, ai_response = get_ai_response(query, openai_key)
     if success:
+        truncated_query = query[:500] + "..." if len(query) > 500 else query
         message = f'''
-<html>
-<head>
-<style>
-    body {{ font-family: Arial, sans-serif; margin: 0; padding: 8px; }}
-    .header {{ color: #333; font-size: 16px; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 8px; }}
-    .content {{ display: inline-block; margin-left: 8px; }}
-    .timestamp {{ color: #888; font-size: 12px; margin-top: 8px; border-top: 1px solid #ddd; padding-top: 4px; }}
-</style>
-</head>
-<body>
-    <div class="header">Ask Bumblebee: {query}</div>
-    {ai_response}
-    <div class="timestamp">{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
-</body>
-</html>
-'''
+    <html>
+    <head>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 0; padding: 8px; }}
+        .header {{ color: #333; font-size: 16px; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 8px; }}
+        .content {{ display: inline-block; margin-left: 8px; }}
+        .timestamp {{ color: #888; font-size: 12px; margin-top: 8px; border-top: 1px solid #ddd; padding-top: 4px; }}
+    </style>
+    </head>
+    <body>
+        <div class="header">Ask Bumblebee: {truncated_query}</div>
+        {ai_response}
+        <div class="timestamp">{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
+    </body>
+    </html>
+    '''
         return send_email_notification(message, sender_email, sender_password, recipient_email)
     return False

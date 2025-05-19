@@ -6,13 +6,13 @@ Main entry point for the application
 import os
 import sys
 import time
+import re
 import shutil
-from datetime import datetime
-from pathlib import Path
 import yaml
+from pathlib import Path
 from docx import Document
 from faster_whisper import WhisperModel  # type: ignore
-from src.util_bumblebee import process_query_and_send_email
+from src.util_bumblebee import process_query_and_send_email, get_youtube_transcript
 
 
 class AudioTranscriber:
@@ -42,19 +42,15 @@ class AudioTranscriber:
         """
         try:
             print(f"Starting transcription of {os.path.basename(audio_file)}")
-
-            # Transcribe the audio file
             segments, _ = self.model.transcribe(audio_file, beam_size=5)
-
-            # Join all segments into final text
             transcription = " ".join(segment.text for segment in segments)
 
             if not transcription.strip():
-                return False, "Transcription produced no text"
+                print(f"Warning: Transcription for {audio_file} is empty.")
+                return True, ""
 
             print("Transcription completed successfully")
             return True, transcription
-
         except Exception as e:
             error_msg = f"Transcription failed: {str(e)}"
             print(error_msg)
@@ -74,17 +70,14 @@ class Configuration:
         """Load configuration from YAML file in user's home directory"""
         try:
             if not os.path.exists(self.config_path):
-                print(f"Configuration file not found: {self.config_path}")
-                print("Please create a configuration file based on the template.")
-                sys.exit(1)
-
-            with open(self.config_path, 'r') as file:
-                config = yaml.safe_load(file)
-                print(f"Configuration loaded from {self.config_path}")
-                return config
+                print(f"Error: Configuration file not found at {self.config_path}")
+                return {}
+            with open(self.config_path, 'r', encoding='utf-8') as file:
+                config_data = yaml.safe_load(file)
+                return config_data if config_data else {}
         except Exception as e:
-            print(f"Error loading configuration: {str(e)}")
-            sys.exit(1)
+            print(f"Error loading configuration from {self.config_path}: {str(e)}")
+            return {}
 
     def get_monitor_path(self):
         """Get the OneDrive folder path to monitor"""
@@ -125,11 +118,10 @@ class Configuration:
         """Get AI configuration settings"""
         try:
             ai_config = self.config.get('ai', {})
-            return {
-                'x.ai': ai_config.get('x.ai'),
-            }
+            x_ai_settings = ai_config.get('x.ai', {})
+            return {'x.ai': x_ai_settings}
         except KeyError:
-            print("Warning: AI configuration not found")
+            print("Warning: AI configuration not found or incomplete.")
             return {}
 
 
@@ -205,74 +197,123 @@ class FolderMonitor:
 
     def _process_file(self, filepath):
         """
-        Process a newly detected file
-
-        Args:
-            filepath: Full path to the file
-
-        Returns:
-            bool: Whether processing was successful
+        Process a newly detected file.
+        If the file content contains a YouTube URL, it fetches the transcript,
+        gets an AI summary, and emails it. Otherwise, it processes the file content directly.
         """
         try:
             filename = os.path.basename(filepath)
             print(f"\nProcessing new file: {filename}")
-            content = None
-
-            # Create file info dictionary
-            file_info = {'name': filename, 'type': None}
-
-            # Process the file based on its type
+            file_content_query = ""
             _, ext = os.path.splitext(filepath.lower())
 
-            # Process text files
             if ext == '.txt':
-                file_info['type'] = 'Text file'
                 with open(filepath, 'r', encoding='utf-8') as f:
-                    content = f.read()
-
-            # Process Word documents
-            elif ext in [self.EXT_DOCX, self.EXT_DOC]:
-                file_info['type'] = 'Word document'
-                if ext == self.EXT_DOCX:
-                    doc = Document(filepath)
-                    content = '\n'.join([paragraph.text for paragraph in doc.paragraphs])
-                else:
-                    print("Note: .doc files are not supported, only .docx")
-                    return False
-
-            # Process MP3 files
+                    file_content_query = f.read()
+            elif ext == self.EXT_DOCX:
+                doc = Document(filepath)
+                file_content_query = "\n".join([para.text for para in doc.paragraphs])
             elif ext == '.mp3':
-                file_info['type'] = 'MP3 audio'
-                success, transcription = self.transcriber.transcribe(filepath)
+                success, transcription_text = self.transcriber.transcribe(filepath)
                 if success:
-                    content = transcription
+                    file_content_query = f"Summarize the following audio transcription: \n\n{transcription_text}"
                 else:
-                    print(f"Transcription failed: {transcription}")
+                    print(f"Transcription failed for {filename}: {transcription_text}")
+                    self._move_file(filepath, filename, "error_transcription")
+                    return False
+            else:
+                print(f"Unsupported file type for AI processing: {ext} for file {filename}")
+                self._move_file(filepath, filename, "unsupported")
+                return False
+
+            if not file_content_query.strip():
+                print(f"No content to process for {filename}")
+                self._move_file(filepath, filename, "empty_content")
+                return False
+
+            youtube_url_pattern = r"(https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)[\w\-=&?]+)"
+            match = re.search(youtube_url_pattern, file_content_query)
+            video_url_to_process = None
+            current_query_to_process = file_content_query
+
+            if match:
+                video_url_to_process = match.group(0)
+                print(f"Detected YouTube URL in {filename}: {video_url_to_process}")
+
+                api_key = self.ai_config.get('x.ai', {})
+                if not api_key:
+                    print(f"Error: X.AI API key not configured for YouTube processing of {filename}.")
+                    self._move_file(filepath, filename, "error_config")
                     return False
 
-            # Send content via email if we have content and email config
-            if content and self.email_config.get('sender_email'):
-                process_query_and_send_email(
-                    query=content,
-                    sender_email=self.email_config['sender_email'],
-                    sender_password=self.email_config['sender_password'],
-                    recipient_email=self.email_config.get('recipient_email'),
-                    openai_key=self.ai_config.get('x.ai'),
-                )
+                print(f"Fetching transcript for {video_url_to_process}...")
+                success_transcript, transcript_or_error = get_youtube_transcript(video_url_to_process)
 
-            # Create processed subfolder with date if needed
-            date_folder = os.path.join(self.processed_path, datetime.now().strftime("%Y-%m-%d"))
-            os.makedirs(date_folder, exist_ok=True)
+                if success_transcript:
+                    current_query_to_process = (
+                        f"first provide a video summary, then provide detailed description for each topic in this video "
+                        f"with precision including key points made and person who made the point. "
+                        f"youtube video location: {video_url_to_process} The transcript: {transcript_or_error}"
+                    )
+                    print(f"Transcript fetched. Querying AI for summary and details of {video_url_to_process}.")
+                else:
+                    print(f"Error fetching transcript for {video_url_to_process}: {transcript_or_error}")
+                    self._move_file(filepath, filename, "error_youtube_transcript")
+                    return False
 
-            # Move file to processed folder
-            target_path = os.path.join(date_folder, filename)
-            shutil.move(filepath, target_path)
-            print(f"\nMoved '{filename}' to {target_path}")
+            print(f"Sending query to AI for {filename}: \"{current_query_to_process[:200]}...\"")
 
-            return True
+            sender_email = self.email_config.get('sender_email')
+            sender_password = self.email_config.get('sender_password')
+            recipient_email = self.email_config.get('recipient_email')
+
+            api_key = self.ai_config.get('x.ai', {})
+
+            if not all([sender_email, sender_password, recipient_email, api_key]):
+                print(f"Error: Email or AI API key configuration is missing for processing {filename}.")
+                self._move_file(filepath, filename, "error_config")
+                return False
+
+            email_sent = process_query_and_send_email(
+                query=current_query_to_process, openai_key=api_key, sender_email=sender_email, sender_password=sender_password, recipient_email=recipient_email
+            )
+
+            if email_sent:
+                print(f"Successfully processed {filename} and sent email.")
+                self._move_file(filepath, filename, "processed")
+                return True
+            else:
+                print(f"Failed to process {filename} (AI/email step).")
+                self._move_file(filepath, filename, "error_ai_email")
+                return False
+
         except Exception as e:
-            print(f"Error processing file {filepath}: {str(e)}")
+            print(f"Critical error processing file {filepath}: {str(e)}")
+            self._move_file(filepath, os.path.basename(filepath), "critical_error")
             return False
+
+    def _move_file(self, filepath, filename, status_folder_name="processed"):
+        """Helper function to move files and update known_files set."""
+        try:
+            destination_folder = os.path.join(self.processed_path, status_folder_name)
+            os.makedirs(destination_folder, exist_ok=True)
+
+            base, ext = os.path.splitext(filename)
+            counter = 1
+            destination_path = os.path.join(destination_folder, filename)
+            while os.path.exists(destination_path):
+                destination_path = os.path.join(destination_folder, f"{base}_{counter}{ext}")
+                counter += 1
+                if counter > 100:
+                    print(f"Error: Too many conflicting filenames for {filename} in {destination_folder}.")
+                    return
+
+            shutil.move(filepath, destination_path)
+            print(f"Moved {filename} to {destination_path}")
+            if filepath in self.known_files:
+                self.known_files.remove(filepath)
+        except Exception as e:
+            print(f"Error moving file {filename} to {status_folder_name}: {e}")
 
     def start_monitoring(self, run_once=False):
         """
@@ -291,26 +332,20 @@ class FolderMonitor:
             print(f"Processed files will be moved to: {self.processed_path}")
 
             while True:
-                # Trigger OneDrive refresh
                 self._refresh_onedrive()
-                # Check for new files
                 current_files = {os.path.join(self.monitor_path, f) for f in os.listdir(self.monitor_path) if os.path.isfile(os.path.join(self.monitor_path, f))}
 
                 new_files = current_files - self.known_files
                 new_supported_files = [f for f in new_files if self._is_supported_file(f)]
 
-                # Process new files
                 for filepath in new_supported_files:
                     if self._process_file(filepath):
                         processed_files.append(filepath)
-
-                        # Update known files - remove processed files from known files
                         self.known_files = current_files - set(processed_files)
 
                 if run_once:
                     return processed_files
 
-                # Wait for the next check
                 time.sleep(self.check_interval)
 
         except KeyboardInterrupt:
@@ -329,10 +364,8 @@ def main():
     print("Loading configuration...")
 
     try:
-        # Load configuration
         config = Configuration()
 
-        # Get paths and settings from config
         monitor_path = config.get_monitor_path()
         processed_path = config.get_processed_path()
         check_interval = config.get_check_interval()
@@ -343,12 +376,10 @@ def main():
         print(f"Processed files will be moved to: {processed_path}")
         print(f"Checking for new files every {check_interval} seconds")
 
-        # Create folder monitor and start watching
         monitor = FolderMonitor(
             monitor_path=monitor_path, processed_path=processed_path, check_interval=check_interval, email_config=email_config, ai_config=ai_config
         )
 
-        # Start monitoring (this runs indefinitely)
         monitor.start_monitoring()
     except KeyboardInterrupt:
         print("\nBumblebee application stopped by user.")
