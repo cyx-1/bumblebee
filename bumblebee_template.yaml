@@ -4,27 +4,29 @@
 onedrive:
   # Path to monitor within OneDrive (REQUIRED)
   # This should be the full path to the OneDrive folder you want to monitor
-  monitor_path: "C:/Users/Yexin Chen/OneDrive/Instructions/Uncategorized"
+  monitor_path: "C:/Users/TBD/OneDrive/Instructions/Uncategorized"
   
   # Path where processed files will be moved (REQUIRED)
   # If not specified, a "processed" folder will be created inside the monitor_path
-  processed_path: "C:/Users/Yexin Chen/OneDrive/Instructions/Uncategorized/processed"
+  processed_path: "C:/Users/TBD/OneDrive/Instructions/Uncategorized/processed"
   
   # Results Storage (Future implementation)
   results:
   # Path to store results
-  output_path: "C:/Users/Yexin Chen/OneDrive/Instructions/Uncategorized/results"
+  output_path: "C:/Users/TBD/OneDrive/Instructions/Uncategorized/results"
 
   # How often to check for new files (in seconds)
-  # Default: 60 seconds if not specified
-  check_interval: 60
+  check_interval: 10
 
-# Audio Transcription Settings (Future implementation)
-transcription:
-  # Service to use for transcription (e.g., "azure", "google")
-  service: "azure"
-  # Language code for transcription
-  language: "en-US"
+
+email:
+  sender_email: "TBD"
+  recipient_email: "TBD"
+  sender_password: "TBD"
+
+ai:
+  x.ai: "TBD"
+
 
 # Task Processing Settings (Future implementation)
 tasks:
