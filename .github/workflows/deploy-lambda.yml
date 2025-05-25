@@ -131,7 +131,7 @@ jobs:
           echo "function-exists=false" >> $GITHUB_OUTPUT
           echo "Lambda function ${{ env.LAMBDA_FUNCTION_NAME }} does not exist"
         fi
-        
+
     - name: Create Lambda function
       if: steps.check-function.outputs.function-exists == 'false'
       run: |        
@@ -145,7 +145,8 @@ jobs:
           --description "Bumblebee test Lambda function" \
           --timeout 30 \
           --memory-size 128
-          - name: Update Lambda function code
+        
+    - name: Update Lambda function code
       if: steps.check-function.outputs.function-exists == 'true'
       run: |
         echo "Updating existing Lambda function: ${{ env.LAMBDA_FUNCTION_NAME }}"
