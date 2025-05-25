@@ -19,7 +19,7 @@ def lambda_handler(event, context):
         # Import and execute test.py
         import test  # This will execute the print('hello') statement
 
-        return {'statusCode': 200, 'body': 'Test function executed successfully - test.py has been imported and run'}
+        return {'statusCode': 200, 'body': 'Hello Dave. Test function executed successfully - test.py has been imported and run'}
     except Exception as e:
         return {'statusCode': 500, 'body': f'Error executing test function: {str(e)}'}
 

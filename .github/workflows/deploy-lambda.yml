@@ -30,7 +30,7 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.12'
-        
+
     - name: Install dependencies
       run: |
         if [ -f requirements.txt ]; then
@@ -39,30 +39,6 @@ jobs:
           echo "No requirements.txt found, skipping dependency installation"
         fi
         
-    - name: Prepare Lambda handler
-      run: |
-        # Create a lambda_function.py that imports and runs test.py
-        cat > lambda_function.py << 'EOF'
-        import sys
-        import os
-        
-        # Add src directory to Python path
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
-        
-        def lambda_handler(event, context):
-            try:
-                # Import and execute test.py
-                import test
-                return {
-                    'statusCode': 200,
-                    'body': 'Test function executed successfully'
-                }
-            except Exception as e:
-                return {
-                    'statusCode': 500,
-                    'body': f'Error executing test function: {str(e)}'
-                }
-        EOF
     - name: Package Lambda function
       run: |
         zip -r lambda-function.zip lambda_function.py src/ -x "src/__pycache__/*" "*.pyc"
