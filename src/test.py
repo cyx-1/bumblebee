@@ -115,7 +115,7 @@ def test():
         date = email_data.get('date', 'Unknown date')
         body_preview = email_data.get('body', '')[:200] + "..." if len(email_data.get('body', '')) > 200 else email_data.get('body', '')
 
-        return f"""First Gmail email retrieved successfully at {email_data['timestamp']}:
+        return f"""Yea!! First Gmail email retrieved successfully at {email_data['timestamp']}:
 Subject: {subject}
 From: {sender}
 Date: {date}
