@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from typing import Tuple
+from typing import Tuple, Dict, Any, Optional
 import smtplib
 from email.message import EmailMessage
 from datetime import datetime
