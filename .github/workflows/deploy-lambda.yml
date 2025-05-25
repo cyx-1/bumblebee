@@ -25,7 +25,8 @@ jobs:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
-          - name: Set up Python
+
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.12'
@@ -62,7 +63,7 @@ jobs:
                     'body': f'Error executing test function: {str(e)}'
                 }
         EOF
-      - name: Package Lambda function
+    - name: Package Lambda function
       run: |
         zip -r lambda-function.zip lambda_function.py src/ -x "src/__pycache__/*" "*.pyc"
         
