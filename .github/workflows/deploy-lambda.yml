@@ -145,14 +145,19 @@ jobs:
           --description "Bumblebee test Lambda function" \
           --timeout 30 \
           --memory-size 128
-        
-    - name: Update Lambda function code
+          - name: Update Lambda function code
       if: steps.check-function.outputs.function-exists == 'true'
       run: |
         echo "Updating existing Lambda function: ${{ env.LAMBDA_FUNCTION_NAME }}"
         aws lambda update-function-code \
           --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
           --zip-file fileb://lambda-function.zip
+          
+    - name: Wait for Lambda function to be ready
+      run: |
+        echo "Waiting for Lambda function to be in Active state..."
+        aws lambda wait function-active --function-name ${{ env.LAMBDA_FUNCTION_NAME }}
+        echo "Lambda function is now active and ready for invocation"
           
     - name: Test Lambda function
       run: |
